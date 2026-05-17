@@ -3,7 +3,6 @@ import folium
 import streamlit as st
 import streamlit.components.v1 as components
 import os
-import re
 
 # =========================================================================
 # CONTROL DE DISEÑO ANCHO SEGURO (Fuerza la expansión total en subpáginas)
@@ -19,7 +18,7 @@ st.markdown(
         padding-left: 2rem !important;
         padding-right: 2rem !important;
     }
-    /* Selector moderno para la nueva interfaz de Streamlit */
+    /* Selector moderno compatible con la nube de Streamlit */
     [data-testid="stMainBlockContainer"] {
         max-width: 95% !important;
     }
@@ -29,9 +28,9 @@ st.markdown(
 )
 
 # =========================================================================
-# CONFIGURACIÓN DE RUTAS RELATIVAS (Para la Nube)
+# CONFIGURACIÓN DE RUTAS RELATIVAS (Optimizado para GitHub y Streamlit Cloud)
 # =========================================================================
-# Reemplazamos la ruta fija de Windows C:\... por el archivo raíz del repositorio
+# Reemplazamos la ruta estática C:\... por el archivo raíz del repositorio
 RUTA_CSV = "historico_real_completo-F2.csv"
 
 # Coordenadas geográficas base para el centrado de las burbujas por localidad
@@ -94,7 +93,7 @@ def cargar_y_procesar_historico(ruta):
     return conteo, total_registros
 
 # Ejecutar la carga y procesamiento inicial indexado en caché
-with st.spinner("🔄 Procesando base de datos histórica (466,000+ filas)... Por favor espere."):
+with st.spinner("🔄 Procesando base de datos histórica... Por favor espere."):
     df_modelo, total_filas_reales = cargar_y_procesar_historico(RUTA_CSV)
 
 # =========================================================================
@@ -195,20 +194,21 @@ else:
     with col_mapa:
         st.subheader(f"📌 Densidad de Emergencias Proyectada: {input_dia} a las {input_hora}:00 hs")
         
-        # Ajustamos el encuadre dinámicamente según el Punto Focal
+        # --- LÓGICA DE APUNTADO / CENTRADO DINÁMICO ---
+        # Si el usuario elige una localidad, extraemos su latitud y longitud asignadas para mover el visor allí
         if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES":
             row_foco = df_resultados[df_resultados['LOCALIDAD'] == localidad_foco].iloc[0]
             centro_mapa = [row_foco['Lat'], row_foco['Lon']]
-            zoom_inicial = 13
+            zoom_inicial = 13  # Zoom de aproximación para la localidad seleccionada
         else:
-            centro_mapa = [4.640, -74.100]
+            centro_mapa = [4.640, -74.100]  # Coordenadas generales de Bogotá
             zoom_inicial = 11
 
         m = folium.Map(location=centro_mapa, zoom_start=zoom_inicial, tiles="cartodbpositron")
         
         # Dibujar las burbujas aplicando la lógica de semáforo
         for idx, row in df_resultados.iterrows():
-            # Si hay un foco seleccionado y la fila no corresponde, se omite del mapa
+            # Si hay un foco seleccionado y la fila actual no coincide, se oculta del mapa para aislar el resultado
             if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES" and row['LOCALIDAD'] != localidad_foco:
                 continue
                 
@@ -241,5 +241,5 @@ else:
                         f"Estado: <span style='color:{color_semaforo}'><b>{alerta_txt}</b></span>"
             ).add_to(m)
             
-        # Renderizar mapa configurando el width al 100% para evitar que se comprima
+        # Renderizar mapa configurando el width al 100% para evitar que se fracture el diseño ancho
         components.html(m._repr_html_(), height=550, width="100%", scrolling=False)

@@ -3,18 +3,15 @@ import folium
 import streamlit as st
 import streamlit.components.v1 as components
 import os
-
-# Configuración institucional de entorno ancho
-st.set_page_config(layout="wide", page_title="Modelo de Distribución de Recursos", page_icon="🚑")
+import re
+import json
 
 # =========================================================================
-# CONFIGURACIÓN DE RUTAS RELATIVAS (Para la Nube)
+# CONFIGURACIÓN DE RUTAS RELATIVAS (Optimizado para la Nube y GitHub)
 # =========================================================================
-RUTA_HISTORICO = "historico_real_completo-F2.csv"
-RUTA_AMBULANCIAS = "ubicaciones_ambulancias.csv"
-RUTA_HOSPITALES = "red hospitalaria.csv"
+# Eliminamos la ruta C:\... para leer directamente los archivos del repositorio
+RUTA_CSV = "historico_real_completo-F2.csv"
 RUTA_GEOJSON = "Localidades1.0.geojson"
-
 
 # Coordenadas geográficas base para el centrado de las burbujas por localidad
 coordenadas_localidades = {
@@ -36,53 +33,45 @@ df_coor = pd.DataFrame(coordenadas_localidades)
 @st.cache_data
 def cargar_y_procesar_historico(ruta):
     """
-    Carga el dataset de 466k filas segmentado por punto y coma, extrae variables
+    Carga el dataset segmentado por punto y coma, extrae variables
     temporales y calcula la tasa de incidentes por hora para la simulación.
     """
     if not os.path.exists(ruta):
         return None, 0
     
-    # 1.1 Leer el archivo con separador de punto y coma según la muestra
+    # Leer el archivo de forma eficiente
     df = pd.read_csv(ruta, sep=';', encoding='latin1', low_memory=False)
     total_registros = len(df)
     
     # Limpieza básica de nombres de columnas
-    df.columns = [col.upper().strip() for col in df.columns]
+    df.columns = [col.upper().strip().replace('"', '') for col in df.columns]
     
-    # 1.2 Extracción de la HORA entera (ej: de "1:11:00" toma el "1")
+    # Extracción de la HORA entera
     if 'HORA' in df.columns:
         df['HORA_PROCESADA'] = df['HORA'].astype(str).str.split(':').str[0]
         df['HORA_PROCESADA'] = pd.to_numeric(df['HORA_PROCESADA'], errors='coerce').fillna(0).astype(int)
     else:
         df['HORA_PROCESADA'] = 0
 
-    # 1.3 Extracción del DIA de la semana a partir de la fecha de desplazamiento
+    # Extracción del DIA de la semana
     if 'FECHA_INICIO_DESPLAZAMIENTO_MOVIL' in df.columns:
-        # Convertir a datetime detectando el formato día/mes/año
         fechas = pd.to_datetime(df['FECHA_INICIO_DESPLAZAMIENTO_MOVIL'], format='%d/%m/%Y', errors='coerce')
-        
-        # Mapeo de nombres al español para interactuar con la UI de Streamlit
         dias_map = {'Monday': 'Lunes', 'Tuesday': 'Martes', 'Wednesday': 'Miércoles', 'Thursday': 'Jueves', 
                     'Friday': 'Viernes', 'Saturday': 'Sábado', 'Sunday': 'Domingo'}
         df['DIA_PROCESADO'] = fechas.dt.day_name().replace(dias_map)
     else:
         df['DIA_PROCESADO'] = 'Lunes'
         
-    # Limpieza de la columna localidad
     if 'LOCALIDAD' in df.columns:
         df['LOCALIDAD'] = df['LOCALIDAD'].astype(str).str.upper().str.strip()
     
-    # 1.4 MODELO MATEMÁTICO: Frecuencia promedio estimada por hora (Total casos / semanas estimadas)
-    # Asumimos una base estimada de semanas del histórico para promediar la carga por hora
     conteo = df.groupby(['DIA_PROCESADO', 'HORA_PROCESADA', 'LOCALIDAD']).size().reset_index(name='Total_Casos')
-    
-    # Estimación de tasa por hora (ajustable según los años de tu muestra, asumiendo 52 semanas promedio)
     conteo['Incidentes_Proyectados'] = (conteo['Total_Casos'] / 52).round(1)
     
     return conteo, total_registros
 
 # Ejecutar carga y procesamiento pesado indexado en caché
-with st.spinner("🔄 Procesando base de datos histórica (466,000+ filas)... Por favor espere."):
+with st.spinner("🔮 Procesando base de datos histórica... Por favor espere."):
     df_modelo, total_filas_reales = cargar_y_procesar_historico(RUTA_CSV)
 
 # =========================================================================
@@ -93,8 +82,7 @@ st.markdown("### Proyección Espacio-Temporal con Motor de Densidad entrenado di
 st.divider()
 
 if df_modelo is None:
-    st.error(f"❌ No se encontró el archivo CSV en la ruta especificada: `{RUTA_CSV}`")
-    st.info("Por favor verifica que la ruta sea exacta y que el archivo esté guardado en esa ubicación.")
+    st.error(f"❌ No se encontró el archivo CSV en la raíz del repositorio: `{RUTA_CSV}`")
 else:
     # Barra Lateral: Controles para filtrar el histórico masivo
     with st.sidebar:
@@ -116,25 +104,22 @@ else:
         )
         
         st.divider()
-        st.markdown("### 🚦 Umbral de Carga Operacional")
+        st.markdown("### 🚨 Umbral de Carga Operacional")
         st.markdown("🔴 **Carga Crítica:** Superior al promedio esperado en hora pico")
         st.markdown("🟡 **Carga Moderada:** Comportamiento estándar estable")
         st.markdown("🟢 **Carga Baja:** Densidad mínima de llamadas")
         st.divider()
-        st.success(f"📂 Dataset conectado con éxito.")
+        st.success(f"📋 Dataset conectado con éxito.")
 
-    # Filtrado en tiempo real sobre el dataframe precalculado
+    # Filtrado en tiempo real
     df_filtrado = df_modelo[(df_modelo['DIA_PROCESADO'] == input_dia) & (df_modelo['HORA_PROCESADA'] == input_hora)]
-    
-    # Cruzar datos calculados con la matriz de coordenadas geográficas
     df_resultados = pd.merge(df_coor, df_filtrado, on='LOCALIDAD', how='left').fillna(0)
     
-    # Umbrales dinámicos inteligentes según el comportamiento de la hora seleccionada
     max_casos = df_resultados['Incidentes_Proyectados'].max()
     umbral_rojo = max_casos * 0.70 if max_casos > 0 else 5
     umbral_amarillo = max_casos * 0.35 if max_casos > 0 else 2
 
-    # 2.1 Tarjetas de Indicadores Estadísticos Dinámicos (KPI Cards)
+    # KPI Cards
     kpi1, kpi2, kpi3 = st.columns(3)
     with kpi1:
         st.metric(label="📊 Volumen Total del Dataset Histórico", value=f"{total_filas_reales:,} Registros")
@@ -152,61 +137,32 @@ else:
 
     st.divider()
 
-    # 2.2 Distribución del Tablero (Mapa Izquierda, Tabla Detallada Derecha)
+    # Layout de columnas
     col_mapa, col_tabla = st.columns([6, 4])
 
     with col_mapa:
-        st.subheader(f"📌 Densidad de Emergencias Proyectada: {input_dia} a las {input_hora}:00 hs")
+        st.subheader(f"🗺️ Densidad de Emergencias Proyectada: {input_dia} a las {input_hora}:00 hs")
         
-        # Inicializar Mapa Base
         m = folium.Map(location=[4.640, -74.100], zoom_start=11, tiles="cartodbpositron")
         
-        # Dibujar las burbujas aplicando la lógica de semáforo
+        # --- NUEVA CAPA: DIBUJAR LÍMITES GEOJSON DE LAS LOCALIDADES ---
+        if os.path.exists(RUTA_GEOJSON):
+            with open(RUTA_GEOJSON, 'r', encoding='utf-8') as f:
+                geojson_data = json.load(f)
+            
+            folium.GeoJson(
+                geojson_data,
+                name="Límites Bogotá",
+                style_function=lambda x: {
+                    'fillColor': '#f8f9fa',
+                    'color': '#4a4a4a',
+                    'weight': 1.5,
+                    'fillOpacity': 0.05
+                }
+            ).add_to(m)
+        
+        # Dibujar las burbujas tipo semáforo
         for idx, row in df_resultados.iterrows():
             casos = row['Incidentes_Proyectados']
             
-            if casos >= umbral_rojo and casos > 0:
-                color_semaforo = "#e63946"  # Rojo
-                alerta_txt = "CRÍTICA (ALTA DENSIDAD)"
-            elif casos >= umbral_amarillo and casos > 0:
-                color_semaforo = "#ffb703"  # Amarillo
-                alerta_txt = "MODERADA"
-            else:
-                color_semaforo = "#2a9d8f"  # Verde
-                alerta_txt = "BAJA / BAJO RIESGO"
-
-            # Factor de escala visual dinámico para los radios
-            radio_visual = (casos / (max_casos if max_casos > 0 else 1)) * 2500
-            radio_visual = max(radio_visual, 150) # Evita círculos invisibles de valor 0
-
-            folium.Circle(
-                location=[row['Lat'], row['Lon']],
-                radius=radio_visual,
-                color=color_semaforo,
-                fill=True,
-                fill_color=color_semaforo,
-                fill_opacity=0.6,
-                weight=1.5,
-                tooltip=f"<b>Localidad: {row['LOCALIDAD']}</b><br>"
-                        f"Proyección: <b>{casos} incidentes/hora</b><br>"
-                        f"Estado: <span style='color:{color_semaforo}'><b>{alerta_txt}</b></span>"
-            ).add_to(m)
-            
-        # Renderizar mapa de forma segura
-        components.html(m._repr_html_(), height=550, scrolling=False)
-
-    with col_tabla:
-        st.markdown("#### 📋 Demanda de Incidentes por Hora")
-        st.caption("Frecuencia matemática calculada mediante agregación estructurada del histórico real.")
-        
-        # Tabla detallada ordenable
-        df_tabla = df_resultados[['LOCALIDAD', 'Incidentes_Proyectados']].copy()
-        df_tabla.columns = ['Localidad', 'Incidentes Esperados (Casos/Hora)']
-        
-        st.dataframe(
-            df_tabla.sort_values(by='Incidentes Esperados (Casos/Hora)', ascending=False),
-            height=450,
-            use_container_width=True
-        )
-        
-        st.success(f"Modelo probabilístico sincronizado.")
+            if casos >= umbral_rojo and

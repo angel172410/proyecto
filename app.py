@@ -74,7 +74,7 @@ def procesar_todo_el_sistema(ruta_hist, ruta_amb, ruta_hosp):
     conteo_incidentes = df_hist.groupby(['DIA_PROCESADO', 'HORA_PROCESADA', 'LOCALIDAD']).size().reset_index(name='Total_Casos')
     conteo_incidentes['Incidentes_Proyectados'] = (conteo_incidentes['Total_Casos'] / 52).round(1)
     
-    # 1.2 Ubicaciones de Ambulancias (Modificado con Extractor Seguro sin Split)
+    # 1.2 Ubicaciones de Ambulancias
     df_amb = pd.read_csv(ruta_amb, sep=';', encoding='latin1', low_memory=False)
     total_amb = len(df_amb)
     df_amb.columns = [col.upper().strip().replace('"', '') for col in df_amb.columns]
@@ -132,6 +132,7 @@ else:
         st.divider()
         st.markdown("### 🗺️ Leyenda de Recursos")
         st.markdown("🖤 **Borde Línea:** Frontera de Localidad")
+        st.markdown("⭐ **Pin Naranja (Estrella):** Centro de Gravedad Óptimo")
         st.markdown("🔵 **Pin Azul (+):** Ambulancia Operativa")
         st.markdown("🔴 **Pin Rojo (H):** Hospital / IPS Disponible")
         st.markdown("🟢🟡🔴 **Burbujas:** Incidentes Proyectados")
@@ -222,6 +223,7 @@ else:
 
         folium.GeoJson(geojson_data, name="Límites", style_function=funcion_estilo).add_to(m)
 
+        # --- CAPA 2: BURBUJAS DE INCIDENTES ---
         for idx, row in df_final.iterrows():
             if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES" and row['LOCALIDAD'] != localidad_foco:
                 continue
@@ -237,6 +239,25 @@ else:
                     tooltip=f"<b>{row['LOCALIDAD']}</b><br>Incidentes: {casos}/h"
                 ).add_to(m)
             
+        # --- CAPA INTERMEDIA: CALCULO Y RENDERIZADO DEL CENTRO DE GRAVEDAD ---
+        df_gravedad = df_final[df_final['Incidentes_Proyectados'] > 0]
+        if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES":
+            df_gravedad = df_gravedad[df_gravedad['LOCALIDAD'] == localidad_foco]
+
+        if not df_gravedad.empty and df_gravedad['Incidentes_Proyectados'].sum() > 0:
+            sum_inc = df_gravedad['Incidentes_Proyectados'].sum()
+            # Promedio ponderado espacial (Centro de Masa Analítico)
+            lat_grav = (df_gravedad['Lat'] * df_gravedad['Incidentes_Proyectados']).sum() / sum_inc
+            lon_grav = (df_gravedad['Lon'] * df_gravedad['Incidentes_Proyectados']).sum() / sum_inc
+            
+            folium.Marker(
+                location=[lat_grav, lon_grav],
+                icon=folium.Icon(color="orange", icon="star", icon_color="white"),
+                popup=f"<b>Centro de Gravedad Óptimo</b><br>Ubicación teórica sugerida según densidad de casos para {input_dia} a las {input_hora}:00.",
+                tooltip="⭐ CENTRO DE GRAVEDAD"
+            ).add_to(m)
+
+        # --- CAPA 3: AMBULANCIAS ---
         for idx, row_amb in df_ambulancias.iterrows():
             if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES" and row_amb['LOCALIDAD'] != localidad_foco:
                 continue
@@ -249,6 +270,7 @@ else:
                     tooltip=f"🚑 Ambulancia: {p_base}"
                 ).add_to(m)
 
+        # --- CAPA 4: HOSPITALES ---
         for idx, row_hosp in df_hospitales.iterrows():
             if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES" and row_hosp['LOCALIDAD'] != localidad_foco:
                 continue
@@ -265,4 +287,4 @@ else:
                     tooltip=f"🏥 Centro Médico: {nombre_ips}"
                 ).add_to(m)
 
-        components.html(m._repr_html_(), height=550, scrolling=False)
+        components.html(m._repr_html_(), height=550, width="100%", scrolling=False)

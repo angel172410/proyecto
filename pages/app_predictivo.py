@@ -4,11 +4,17 @@ import streamlit as st
 import streamlit.components.v1 as components
 import os
 
-# Configuración de página ancha (Estilo Dashboard de BI institucional)
-st.set_page_config(layout="wide", page_title="Modelo Predictivo Real", page_icon="🔮")
+# Configuración institucional de entorno ancho
+st.set_page_config(layout="wide", page_title="Modelo de Distribución de Recursos", page_icon="🚑")
 
-# Ruta exacta de tu archivo CSV en tu computadora
-RUTA_CSV = r"C:\Users\angel\Desktop\especializacion\proyecto\historico_real_completo-F2.csv"
+# =========================================================================
+# CONFIGURACIÓN DE RUTAS RELATIVAS (Para la Nube)
+# =========================================================================
+RUTA_HISTORICO = "historico_real_completo-F2.csv"
+RUTA_AMBULANCIAS = "ubicaciones_ambulancias.csv"
+RUTA_HOSPITALES = "red hospitalaria.csv"
+RUTA_GEOJSON = "Localidades1.0.geojson"
+
 
 # Coordenadas geográficas base para el centrado de las burbujas por localidad
 coordenadas_localidades = {

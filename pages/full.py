@@ -94,13 +94,12 @@ def procesar_todo_el_sistema(ruta_hist, ruta_amb, ruta_hosp):
     conteo_incidentes = df_hist.groupby(['DIA_PROCESADO', 'HORA_PROCESADA', 'LOCALIDAD']).size().reset_index(name='Total_Casos')
     conteo_incidentes['Incidentes_Proyectados'] = (conteo_incidentes['Total_Casos'] / 52).round(1)
     
-    # 1.2 Ubicaciones de Ambulancias (SANEAMIENTO SEGURO CONTRA ERRORES DMS)
+    # 1.2 Ubicaciones de Ambulancias
     df_amb = pd.read_csv(ruta_amb, sep=';', encoding='latin1', low_memory=False)
     total_amb = len(df_amb)
     df_amb.columns = [col.upper().strip().replace('"', '') for col in df_amb.columns]
     df_amb['LOCALIDAD'] = df_amb['LOCALIDAD'].astype(str).str.upper().str.strip()
     
-    # Normalizar columna de coordenadas para evitar nulos imprevistos
     df_amb['COORDENADAS GEOGRAFICAS'] = df_amb['COORDENADAS GEOGRAFICAS'].fillna('').astype(str).str.strip()
     
     def extraer_coor_seguro(texto, parte_index):
@@ -115,11 +114,27 @@ def procesar_todo_el_sistema(ruta_hist, ruta_amb, ruta_hosp):
     df_amb['LATITUD'] = df_amb['COORDENADAS GEOGRAFICAS'].apply(lambda x: extraer_coor_seguro(x, 0))
     df_amb['LONGITUD'] = df_amb['COORDENADAS GEOGRAFICAS'].apply(lambda x: extraer_coor_seguro(x, 1))
     
-    # 1.3 Red Hospitalaria (CON SANEAMIENTO EXPLICITO DE COLUMNAS)
+    # 1.3 Red Hospitalaria
     df_hosp = pd.read_csv(ruta_hosp, sep=';', encoding='utf-8', low_memory=False)
     total_hosp = len(df_hosp)
     
     df_hosp.columns = [col.upper().strip().replace('"', '') for col in df_hosp.columns]
     df_hosp['LOCALIDAD'] = df_hosp['LOCALIDAD'].astype(str).str.upper().str.strip()
     
-    col_coordenadas =
+    col_coordenadas = [c for c in df_hosp.columns if 'COORDENADAS' in c][0]
+    
+    df_hosp['LATITUD'] = df_hosp[col_coordenadas].astype(str).str.replace('"', '').str.split(';').str[0]
+    df_hosp['LONGITUD'] = df_hosp[col_coordenadas].astype(str).str.replace('"', '').str.split(';').str[1]
+    
+    df_hosp['LATITUD'] = pd.to_numeric(df_hosp['LATITUD'], errors='coerce')
+    df_hosp['LONGITUD'] = pd.to_numeric(df_hosp['LONGITUD'], errors='coerce')
+
+    return conteo_incidentes, df_amb, df_hosp, total_inc, total_amb, total_hosp
+
+with st.spinner("🔄 Acoplando matrices analíticas y Red Hospitalaria de Bogotá..."):
+    df_modelo, df_ambulancias, df_hospitales, total_inc, total_bases_reales, total_hosp_reales = procesar_todo_el_sistema(RUTA_HISTORICO, RUTA_AMBULANCIAS, RUTA_HOSPITALES)
+
+# =========================================================================
+# 2. ENTORNO VISUAL INTERACTIVO
+# =========================================================================
+st.title("🚑 Asign

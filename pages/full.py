@@ -10,12 +10,14 @@ import json
 st.set_page_config(layout="wide", page_title="Modelo de Distribución de Recursos", page_icon="🚑")
 
 # =========================================================================
-# CONFIGURACIÓN DE RUTAS (Ajusta si cambian las ubicaciones)
+# CONFIGURACIÓN DE RUTAS RELATIVAS (Para la Nube)
 # =========================================================================
-RUTA_HISTORICO = r"C:\Users\angel\Desktop\especializacion\proyecto\historico_real_completo-F2.csv"
-RUTA_AMBULANCIAS = r"C:\Users\angel\Desktop\especializacion\proyecto\ubicaciones_ambulancias.csv"
-RUTA_HOSPITALES = r"C:\Users\angel\Desktop\especializacion\proyecto\red hospitalaria.csv"
-RUTA_GEOJSON = r"C:\Users\angel\Desktop\especializacion\proyecto\Localidades1.0.geojson"
+RUTA_HISTORICO = "historico_real_completo-F2.csv"
+RUTA_AMBULANCIAS = "ubicaciones_ambulancias.csv"
+RUTA_HOSPITALES = "red hospitalaria.csv"
+RUTA_GEOJSON = "Localidades1.0.geojson"
+
+
 
 # Coordenadas maestras para los centers de control
 coordenadas_localidades = {

@@ -7,6 +7,23 @@ import re
 import json
 
 # =========================================================================
+# CONTROL DE DISEÑO ANCHO PARA SUBPÁGINAS 
+# =========================================================================
+st.markdown(
+    """
+    <style>
+    .main .block-container {
+        max-width: 95% !important;
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+# =========================================================================
 # CONFIGURACION DE RUTAS RELATIVAS (Optimizado para la Nube y GitHub)
 # =========================================================================
 # Eliminamos la ruta local para leer directo del repositorio

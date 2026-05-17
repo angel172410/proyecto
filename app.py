@@ -76,13 +76,43 @@ def procesar_todo_el_sistema(ruta_hist, ruta_amb, ruta_hosp):
     conteo_incidentes['Incidentes_Proyectados'] = (conteo_incidentes['Total_Casos'] / 52).round(1)
     
     # =========================================================================
-    # 1.2 Ubicaciones de Ambulancias (CORREGIDO PARA EVITAR ERROR DE COLUMNA)
+    # 1.2 Ubicaciones de Ambulancias (VERSIÓN ULTRA RESISTENTE A FORMATOS)
     # =========================================================================
     df_amb = pd.read_csv(ruta_amb, sep=';', encoding='latin1', low_memory=False)
     total_amb = len(df_amb)
     df_amb.columns = [col.upper().strip().replace('"', '') for col in df_amb.columns]
     df_amb['LOCALIDAD'] = df_amb['LOCALIDAD'].astype(str).str.upper().str.strip()
     
+    # Buscador flexible de la columna de coordenadas
+    col_coor_amb = [c for c in df_amb.columns if 'COORDENADAS' in c][0]
+    
+    # Función auxiliar interna y segura para procesar cada fila individualmente sin romper Pandas
+    def extraer_coordenada_segura(celda, tipo='lat'):
+        if pd.isna(celda) or not isinstance(celda, str):
+            return None
+        # Limpiamos comillas y espacios extraños de los extremos
+        texto = celda.strip().replace('"', '')
+        
+        # Buscamos patrones DMS (ej: 4°44'30"N 74°04'15"W) o separados por comas/puntos/espacios
+        # Esta expresión regular separa de forma limpia el bloque Norte/Sur del bloque Este/Oeste
+        bloques = re.findall(r"[-+]?\d+.*?[\d\.]*.*?[NSns].*?[-+]?\d+.*?[\d\.]*.*?[WOwo]", texto)
+        
+        if bloques:
+            # Si tiene la estructura completa, separamos por la mitad o por las letras indicadoras
+            partes = re.split(r'(?<=[NSns])\s*', texto)
+            if len(partes) >= 2:
+                return dms_a_decimal(partes[0]) if tipo == 'lat' else dms_a_decimal(partes[1])
+        
+        # Si fallan los bloques complejos, intentamos un split básico por cualquier tipo de espacio
+        partes_simples = [p for p in re.split(r'\s+', texto) if p]
+        if len(partes_simples) >= 2:
+            return dms_a_decimal(partes_simples[0]) if tipo == 'lat' else dms_a_decimal(partes_simples[1])
+            
+        return dms_a_decimal(texto)
+
+    # Aplicamos la extracción segura fila por fila de forma controlada
+    df_amb['LATITUD'] = df_amb[col_coor_amb].apply(lambda x: extraer_coordenada_segura(x, 'lat'))
+    df_amb['LONGITUD'] = df_amb[col_coor_amb].apply(lambda x: extraer_coordenada_segura(x, 'lon'))
     # BUSCADOR FLEXIBLE: Encuentra la columna aunque tenga tilde (GEOGRÁFICAS) o no
     col_coor_amb = [c for c in df_amb.columns if 'COORDENADAS' in c][0]
     

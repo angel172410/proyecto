@@ -6,17 +6,17 @@ import os
 import re
 import json
 
+
 # Configuración institucional de entorno ancho
 st.set_page_config(layout="wide", page_title="Modelo de Distribución de Recursos", page_icon="🚑")
 
 # =========================================================================
-# CONFIGURACIÓN DE RUTAS RELATIVAS (Optimizado para Streamlit Cloud / GitHub)
+# CONFIGURACIÓN DE RUTAS RELATIVAS (Para la Nube)
 # =========================================================================
-# Eliminamos las rutas C:\... para que lea los archivos directamente desde el repositorio
 RUTA_HISTORICO = "historico_real_completo-F2.csv"
 RUTA_AMBULANCIAS = "ubicaciones_ambulancias.csv"
 RUTA_HOSPITALES = "red hospitalaria.csv"
-RUTA_GEOJSON = "Localidades1.0.geojson"  # Corregido con 'L' mayúscula igual que en tu GitHub
+RUTA_GEOJSON = "Localidades1.0.geojson"
 
 # Coordenadas maestras para los centros de control
 coordenadas_localidades = {
@@ -75,55 +75,29 @@ def procesar_todo_el_sistema(ruta_hist, ruta_amb, ruta_hosp):
     conteo_incidentes = df_hist.groupby(['DIA_PROCESADO', 'HORA_PROCESADA', 'LOCALIDAD']).size().reset_index(name='Total_Casos')
     conteo_incidentes['Incidentes_Proyectados'] = (conteo_incidentes['Total_Casos'] / 52).round(1)
     
-    # =========================================================================
-    # 1.2 Ubicaciones de Ambulancias (VERSIÓN ULTRA RESISTENTE A FORMATOS)
-    # =========================================================================
+    # 1.2 Ubicaciones de Ambulancias (Modificado con Extractor Seguro sin Split)
     df_amb = pd.read_csv(ruta_amb, sep=';', encoding='latin1', low_memory=False)
     total_amb = len(df_amb)
     df_amb.columns = [col.upper().strip().replace('"', '') for col in df_amb.columns]
     df_amb['LOCALIDAD'] = df_amb['LOCALIDAD'].astype(str).str.upper().str.strip()
     
-    # Buscador flexible de la columna de coordenadas
     col_coor_amb = [c for c in df_amb.columns if 'COORDENADAS' in c][0]
     
-    # Función auxiliar interna y segura para procesar cada fila individualmente sin romper Pandas
-    def extraer_coordenada_segura(celda, tipo='lat'):
-        if pd.isna(celda) or not isinstance(celda, str):
+    def separar_coor_regex(celda, tipo='lat'):
+        if pd.isna(celda):
             return None
-        # Limpiamos comillas y espacios extraños de los extremos
-        texto = celda.strip().replace('"', '')
-        
-        # Buscamos patrones DMS (ej: 4°44'30"N 74°04'15"W) o separados por comas/puntos/espacios
-        # Esta expresión regular separa de forma limpia el bloque Norte/Sur del bloque Este/Oeste
-        bloques = re.findall(r"[-+]?\d+.*?[\d\.]*.*?[NSns].*?[-+]?\d+.*?[\d\.]*.*?[WOwo]", texto)
-        
-        if bloques:
-            # Si tiene la estructura completa, separamos por la mitad o por las letras indicadoras
-            partes = re.split(r'(?<=[NSns])\s*', texto)
-            if len(partes) >= 2:
-                return dms_a_decimal(partes[0]) if tipo == 'lat' else dms_a_decimal(partes[1])
-        
-        # Si fallan los bloques complejos, intentamos un split básico por cualquier tipo de espacio
-        partes_simples = [p for p in re.split(r'\s+', texto) if p]
-        if len(partes_simples) >= 2:
-            return dms_a_decimal(partes_simples[0]) if tipo == 'lat' else dms_a_decimal(partes_simples[1])
-            
+        texto = str(celda).strip().replace('"', '')
+        partes = [p for p in re.split(r'\s+', texto) if p]
+        if len(partes) >= 2:
+            return dms_a_decimal(partes[0]) if tipo == 'lat' else dms_a_decimal(partes[1])
         return dms_a_decimal(texto)
 
-    # Aplicamos la extracción segura fila por fila de forma controlada
-    df_amb['LATITUD'] = df_amb[col_coor_amb].apply(lambda x: extraer_coordenada_segura(x, 'lat'))
-    df_amb['LONGITUD'] = df_amb[col_coor_amb].apply(lambda x: extraer_coordenada_segura(x, 'lon'))
-    # BUSCADOR FLEXIBLE: Encuentra la columna aunque tenga tilde (GEOGRÁFICAS) o no
-    col_coor_amb = [c for c in df_amb.columns if 'COORDENADAS' in c][0]
-    
-    # Aplicamos el convertidor usando la columna encontrada flexiblemente
-    df_amb['LATITUD'] = df_amb[col_coor_amb].astype(str).apply(lambda x: dms_a_decimal(x.split(' ')[0] if ' ' in x else x))
-    df_amb['LONGITUD'] = df_amb[col_coor_amb].astype(str).apply(lambda x: dms_a_decimal(x.split(' ')[1] if ' ' in x else x))
+    df_amb['LATITUD'] = df_amb[col_coor_amb].apply(lambda x: separar_coor_regex(x, 'lat'))
+    df_amb['LONGITUD'] = df_amb[col_coor_amb].apply(lambda x: separar_coor_regex(x, 'lon'))
     
     # 1.3 Red Hospitalaria
     df_hosp = pd.read_csv(ruta_hosp, sep=';', encoding='utf-8', low_memory=False)
     total_hosp = len(df_hosp)
-    
     df_hosp.columns = [col.upper().strip().replace('"', '') for col in df_hosp.columns]
     df_hosp['LOCALIDAD'] = df_hosp['LOCALIDAD'].astype(str).str.upper().str.strip()
     
@@ -148,9 +122,9 @@ st.markdown("### Contraste Espacial: Distribución de Ambulancias vs. Red Hospit
 st.divider()
 
 if df_modelo is None:
-    st.error("❌ Error al enlazar los datasets. Revisa que los archivos CSV estén en la raíz de tu repositorio de GitHub.")
+    st.error("❌ Error al enlazar los datasets. Revisa que las rutas de los 3 archivos CSV sean correctas.")
 elif not os.path.exists(RUTA_GEOJSON):
-    st.error(f"❌ El archivo GeoJSON no se encuentra en la raíz como: '{RUTA_GEOJSON}'")
+    st.error(f"❌ El archivo GeoJSON no se encuentra en: '{RUTA_GEOJSON}'")
 else:
     with st.sidebar:
         st.header("⚙️ Configuración del Escenario")
@@ -163,7 +137,6 @@ else:
         st.markdown("🔴 **Pin Rojo (H):** Hospital / IPS Disponible")
         st.markdown("🟢🟡🔴 **Burbujas:** Incidentes Proyectados")
 
-    # Agrupaciones para métricas rápidas
     conteo_amb = df_ambulancias.groupby('LOCALIDAD').size().reset_index(name='Bases_Disponibles')
     conteo_hosp = df_hospitales.groupby('LOCALIDAD').size().reset_index(name='Hospitales_Disponibles')
     
@@ -209,7 +182,6 @@ else:
             st.metric("Total Ambulancias (Flota Activa)", f"{total_bases_reales} Unidades")
             st.metric("Total Hospitales & IPS Mapeados", f"{total_hosp_reales} Entidades")
 
-        # Inyección de la tabla de matriz de diagnóstico territorial solicitada
         st.divider()
         st.markdown("#### 📊 Matriz de Diagnóstico Territorial")
         df_tabla = df_final[['LOCALIDAD', 'Incidentes_Proyectados', 'Bases_Disponibles', 'Hospitales_Disponibles']].copy()
@@ -231,7 +203,6 @@ else:
 
         m = folium.Map(location=centro_mapa, zoom_start=zoom_inicial, tiles="cartodbpositron")
         
-        # --- CAPA 1: DIBUJAR LÍNEAS DEL GEOJSON LOCAL ---
         with open(RUTA_GEOJSON, 'r', encoding='utf-8') as f:
             geojson_data = json.load(f)
 
@@ -252,7 +223,6 @@ else:
 
         folium.GeoJson(geojson_data, name="Límites", style_function=funcion_estilo).add_to(m)
 
-        # --- CAPA 2: BURBUJAS DE INCIDENTES ---
         for idx, row in df_final.iterrows():
             if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES" and row['LOCALIDAD'] != localidad_foco:
                 continue
@@ -268,7 +238,6 @@ else:
                     tooltip=f"<b>{row['LOCALIDAD']}</b><br>Incidentes: {casos}/h"
                 ).add_to(m)
             
-        # --- CAPA 3: PINES DE AMBULANCIAS (AZULES) ---
         for idx, row_amb in df_ambulancias.iterrows():
             if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES" and row_amb['LOCALIDAD'] != localidad_foco:
                 continue
@@ -281,7 +250,6 @@ else:
                     tooltip=f"🚑 Ambulancia: {p_base}"
                 ).add_to(m)
 
-        # --- CAPA 4: PINES DE HOSPITALES (ROJOS) ---
         for idx, row_hosp in df_hospitales.iterrows():
             if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES" and row_hosp['LOCALIDAD'] != localidad_foco:
                 continue

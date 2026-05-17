@@ -75,13 +75,20 @@ def procesar_todo_el_sistema(ruta_hist, ruta_amb, ruta_hosp):
     conteo_incidentes = df_hist.groupby(['DIA_PROCESADO', 'HORA_PROCESADA', 'LOCALIDAD']).size().reset_index(name='Total_Casos')
     conteo_incidentes['Incidentes_Proyectados'] = (conteo_incidentes['Total_Casos'] / 52).round(1)
     
-    # 1.2 Ubicaciones de Ambulancias
+    # =========================================================================
+    # 1.2 Ubicaciones de Ambulancias (CORREGIDO PARA EVITAR ERROR DE COLUMNA)
+    # =========================================================================
     df_amb = pd.read_csv(ruta_amb, sep=';', encoding='latin1', low_memory=False)
     total_amb = len(df_amb)
     df_amb.columns = [col.upper().strip().replace('"', '') for col in df_amb.columns]
     df_amb['LOCALIDAD'] = df_amb['LOCALIDAD'].astype(str).str.upper().str.strip()
-    df_amb['LATITUD'] = df_amb['COORDENADAS GEOGRAFICAS'].astype(str).apply(lambda x: dms_a_decimal(x.split(' ')[0] if ' ' in x else x))
-    df_amb['LONGITUD'] = df_amb['COORDENADAS GEOGRAFICAS'].astype(str).apply(lambda x: dms_a_decimal(x.split(' ')[1] if ' ' in x else x))
+    
+    # BUSCADOR FLEXIBLE: Encuentra la columna aunque tenga tilde (GEOGRÁFICAS) o no
+    col_coor_amb = [c for c in df_amb.columns if 'COORDENADAS' in c][0]
+    
+    # Aplicamos el convertidor usando la columna encontrada flexiblemente
+    df_amb['LATITUD'] = df_amb[col_coor_amb].astype(str).apply(lambda x: dms_a_decimal(x.split(' ')[0] if ' ' in x else x))
+    df_amb['LONGITUD'] = df_amb[col_coor_amb].astype(str).apply(lambda x: dms_a_decimal(x.split(' ')[1] if ' ' in x else x))
     
     # 1.3 Red Hospitalaria
     df_hosp = pd.read_csv(ruta_hosp, sep=';', encoding='utf-8', low_memory=False)

@@ -3,12 +3,36 @@ import folium
 import streamlit as st
 import streamlit.components.v1 as components
 import os
+import re
 
-# Configuración de página ancha (Estilo Dashboard de BI institucional)
-st.set_page_config(layout="wide", page_title="Modelo Predictivo con Punto Focal", page_icon="🔮")
+# =========================================================================
+# CONTROL DE DISEÑO ANCHO SEGURO (Fuerza la expansión total en subpáginas)
+# =========================================================================
+st.markdown(
+    """
+    <style>
+    /* Rompe el contenedor estrecho por defecto de las subpáginas */
+    .main .block-container {
+        max-width: 95% !important;
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
+    }
+    /* Selector moderno para la nueva interfaz de Streamlit */
+    [data-testid="stMainBlockContainer"] {
+        max-width: 95% !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-# Ruta exacta de tu archivo CSV en tu computadora
-RUTA_CSV = r"C:\Users\angel\Desktop\especializacion\proyecto\historico_real_completo-F2.csv"
+# =========================================================================
+# CONFIGURACIÓN DE RUTAS RELATIVAS (Para la Nube)
+# =========================================================================
+# Reemplazamos la ruta fija de Windows C:\... por el archivo raíz del repositorio
+RUTA_CSV = "historico_real_completo-F2.csv"
 
 # Coordenadas geográficas base para el centrado de las burbujas por localidad
 coordenadas_localidades = {
@@ -41,7 +65,7 @@ def cargar_y_procesar_historico(ruta):
     total_registros = len(df)
     
     # Limpieza básica de nombres de columnas
-    df.columns = [col.upper().strip() for col in df.columns]
+    df.columns = [col.upper().strip().replace('"', '') for col in df.columns]
     
     # Extracción de la HORA entera
     if 'HORA' in df.columns:
@@ -81,7 +105,7 @@ st.markdown("### Proyección Espacio-Temporal con Motor de Densidad entrenado di
 st.divider()
 
 if df_modelo is None:
-    st.error(f"❌ No se encontró el archivo CSV en la ruta especificada: `{RUTA_CSV}`")
+    st.error(f"❌ No se encontró el archivo CSV en el repositorio: `{RUTA_CSV}`")
 else:
     # Barra Lateral: Controles temporales de la simulación
     with st.sidebar:
@@ -163,9 +187,59 @@ else:
         st.dataframe(
             df_tabla.sort_values(by='Incidentes Esperados (Casos/Hora)', ascending=False),
             height=350,
-            use_container_width=True
+            use_container_width=True,
+            hide_index=True
         )
 
     # AHORA CONSTRUIMOS EL MAPA BASADO EN LA SELECCIÓN DEL PUNTO FOCAL
     with col_mapa:
         st.subheader(f"📌 Densidad de Emergencias Proyectada: {input_dia} a las {input_hora}:00 hs")
+        
+        # Ajustamos el encuadre dinámicamente según el Punto Focal
+        if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES":
+            row_foco = df_resultados[df_resultados['LOCALIDAD'] == localidad_foco].iloc[0]
+            centro_mapa = [row_foco['Lat'], row_foco['Lon']]
+            zoom_inicial = 13
+        else:
+            centro_mapa = [4.640, -74.100]
+            zoom_inicial = 11
+
+        m = folium.Map(location=centro_mapa, zoom_start=zoom_inicial, tiles="cartodbpositron")
+        
+        # Dibujar las burbujas aplicando la lógica de semáforo
+        for idx, row in df_resultados.iterrows():
+            # Si hay un foco seleccionado y la fila no corresponde, se omite del mapa
+            if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES" and row['LOCALIDAD'] != localidad_foco:
+                continue
+                
+            casos = row['Incidentes_Proyectados']
+            
+            if casos >= umbral_rojo and casos > 0:
+                color_semaforo = "#e63946"  # Rojo
+                alerta_txt = "CRÍTICA (ALTA DENSIDAD)"
+            elif casos >= umbral_amarillo and casos > 0:
+                color_semaforo = "#ffb703"  # Amarillo
+                alerta_txt = "MODERADA"
+            else:
+                color_semaforo = "#2a9d8f"  # Verde
+                alerta_txt = "BAJA / BAJO RIESGO"
+
+            # Factor de escala visual dinámico para los radios
+            radio_visual = (casos / (max_casos_global if max_casos_global > 0 else 1)) * 2500
+            radio_visual = max(radio_visual, 150) # Evita círculos invisibles de valor 0
+
+            folium.Circle(
+                location=[row['Lat'], row['Lon']],
+                radius=radio_visual,
+                color=color_semaforo,
+                fill=True,
+                fill_color=color_semaforo,
+                fill_opacity=0.6,
+                weight=1.5,
+                tooltip=f"<b>Localidad: {row['LOCALIDAD']}</b><br>"
+                        f"Proyección: <b>{casos} incidentes/hora</b><br>"
+                        f"Estado: <span style='color:{color_semaforo}'><b>{alerta_txt}</b></span>"
+            ).add_to(m)
+            
+        # Renderizar mapa configurando el width al 100% para evitar que se comprima
+        components.html(m._repr_html_(), height=550, width="100%", scrolling=False)

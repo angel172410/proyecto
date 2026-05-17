@@ -7,17 +7,20 @@ import re
 import json
 
 # =========================================================================
-# CONTROL DE DISEÑO ANCHO PARA SUBPÁGINAS 
+# CONTROL DE DISEÑO ANCHO SEGURO (Fuerza la expansion total en subpaginas)
 # =========================================================================
 st.markdown(
     """
     <style>
+    /* Estira el contenedor principal de Streamlit */
     .main .block-container {
         max-width: 95% !important;
-        padding-top: 2rem !important;
-        padding-bottom: 2rem !important;
         padding-left: 2rem !important;
         padding-right: 2rem !important;
+    }
+    /* Fuerza a los contenedores internos modernos de la app a tomar todo el ancho */
+    [data-testid="stMainBlockContainer"] {
+        max-width: 95% !important;
     }
     </style>
     """,

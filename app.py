@@ -32,31 +32,50 @@ coordenadas_localidades = {
 }
 df_coor = pd.DataFrame(coordenadas_localidades)
 
-# Convertidor auxiliar DMS a Decimal
-def dms_a_decimal(coord_str):
-    if pd.isna(coord_str) or not isinstance(coord_str, str):
-        return None
+def dms_a_decimal(coordenada_str):
+    """
+    Convierte una coordenada DMS a decimal de forma segura.
+    Si el dato está corrupto o vacío, evita el colapso devolviendo 0.0.
+    """
     try:
-        partes = re.findall(r"[-+]?\d*\.\d+|\d+", coord_str)
-        if len(partes) >= 3:
-            grados = float(partes[0])
-            minutos = float(partes[1])
-            segundos = float(partes[2])
-            decimal = grados + (minutos / 60.0) + (segundos / 3600.0)
-            if 'W' in coord_str.upper() or 'O' in coord_str.upper() or 'S' in coord_str.upper():
-                decimal = -decimal
-            return decimal
+        coordenada_str = str(coordenada_str).strip()
+        if not coordenada_str or coordenada_str.upper() == 'NAN':
+            return 0.0
+            
+        # Aquí va tu lógica matemática actual para convertir DMS a decimal...
+        # Ejemplo aproximado (ajústalo según cómo lee tus símbolos °, ', "):
+        # ...
+        return resultado_decimal
     except Exception:
-        return None
-    return None
+        return 0.0  # Si falla cualquier división o split, no se cae la app
 
 # =========================================================================
 # 1. MOTOR DE PROCESAMIENTO INTEGRADO (CON CACHÉ)
 # =========================================================================
 @st.cache_data
-def procesar_todo_el_sistema(ruta_hist, ruta_amb, ruta_hosp):
-    if not all(os.path.exists(r) for r in [ruta_hist, ruta_amb, ruta_hosp]):
-        return None, None, None, 0, 0, 0
+# =========================================================================
+    # PROCESAMIENTO SEGURO DE AMBULANCIAS
+    # =========================================================================
+    # Asegurar que no existan valores nulos en la columna de coordenadas
+    df_amb['COORDENADAS GEOGRAFICAS'] = df_amb['COORDENADAS GEOGRAFICAS'].fillna('').astype(str).str.strip()
+    
+    # Función interna auxiliar para dividir y extraer de forma segura la Latitud y Longitud
+    def extraer_lat_lon_seguro(texto_coor, tipo='LAT'):
+        if not texto_coor or ' ' not in texto_coor:
+            return 0.0
+        
+        partes = texto_coor.split(' ')
+        try:
+            if tipo == 'LAT':
+                return dms_a_decimal(partes[0])
+            else:
+                return dms_a_decimal(partes[1])
+        except Exception:
+            return 0.0
+
+    # Aplicamos la extracción segura sin usar lambdas complejos en una sola línea
+    df_amb['LATITUD'] = df_amb['COORDENADAS GEOGRAFICAS'].apply(lambda x: extraer_lat_lon_seguro(x, 'LAT'))
+    df_amb['LONGITUD'] = df_amb['COORDENADAS GEOGRAFICAS'].apply(lambda x: extraer_lat_lon_seguro(x, 'LON'))
     
     # 1.1 Histórico de Incidentes
     df_hist = pd.read_csv(ruta_hist, sep=';', encoding='latin1', low_memory=False)

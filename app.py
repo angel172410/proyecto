@@ -206,14 +206,13 @@ else:
         with open(RUTA_GEOJSON, 'r', encoding='utf-8') as f:
             geojson_data = json.load(f)
 
-       def funcion_estilo(feature):
+        def funcion_estilo(feature):
             props = feature['properties']
             nombre_geo = ""
             for llave in ['Localidad', 'LOCALIDAD', 'Nombre', 'NOMBRE', 'NOMBRE_LOCALIDAD']:
-                # Validamos que la llave exista, que no sea None y que tenga texto real asignado
-                if llave in props and props[llave] and str(props[llave]).strip() != "":
+                if llave in props and props[llave]:
                     nombre_geo = str(props[llave]).upper().strip()
-                    break # Solo se detiene si encontró un nombre de localidad válido y con texto
+                    break
             
             if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES":
                 if nombre_geo and (localidad_foco in nombre_geo or nombre_geo in localidad_foco):

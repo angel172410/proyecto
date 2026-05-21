@@ -169,7 +169,7 @@ else:
 
     st.divider()
 
-    # Layout de columnas (Mapa y Tabla principal)
+    # Layout de columnas (Mapa y Contenido Derecho)
     col_mapa, col_tabla = st.columns([6, 4])
 
     with col_mapa:
@@ -225,9 +225,9 @@ else:
             
         components.html(m._repr_html_(), height=550, scrolling=False)
 
-   with col_tabla:
+    with col_tabla:
         # =========================================================================
-        # SECCIÓN: TOP 10 INCIDENTES RECURRENTES POR LOCALIDAD SELECTA (AHORA ARRIBA)
+        # SECCIÓN 1 (ARRIBA): TOP 10 INCIDENTES RECURRENTES POR LOCALIDAD SELECTA
         # =========================================================================
         st.markdown("#### Top 10 Incidentes Más Frecuentes")
         
@@ -262,7 +262,7 @@ else:
         st.divider()
 
         # =========================================================================
-        # SECCIÓN: TABLA DE DEMANDA GENERAL (AHORA ABAJO)
+        # SECCIÓN 2 (ABAJO): TABLA DE DEMANDA GENERAL
         # =========================================================================
         st.markdown("#### Demanda de Incidentes por Hora")
         st.caption("Frecuencia matemática calculada mediante agregación estructurada del histórico real.")
@@ -278,5 +278,3 @@ else:
         )
         
         st.success(f"Modelo probabilistico sincronizado.")
-        
-     

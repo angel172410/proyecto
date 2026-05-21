@@ -225,9 +225,47 @@ else:
             
         components.html(m._repr_html_(), height=550, scrolling=False)
 
-    with col_tabla:
+   with col_tabla:
+        # =========================================================================
+        # SECCIÓN: TOP 10 INCIDENTES RECURRENTES POR LOCALIDAD SELECTA (AHORA ARRIBA)
+        # =========================================================================
+        st.markdown("#### Top 10 Incidentes Más Frecuentes")
+        
+        # El usuario selecciona una localidad de las disponibles en el DataFrame base
+        localidad_seleccionada = st.selectbox(
+            "Filtrar Gráfico por Localidad:",
+            options=sorted(df_coor['LOCALIDAD'].unique()),
+            index=0
+        )
+        
+        # Filtrar el dataframe espacio-temporal por la localidad elegida por el usuario
+        df_incidentes_loc = df_filtrado_th[df_filtrado_th['LOCALIDAD'] == localidad_seleccionada]
+        
+        if not df_incidentes_loc.empty:
+            # Agrupar por TIPO_INCIDENTE, sumar casos y sacar el Top 10
+            top_incidentes = (
+                df_incidentes_loc.groupby('TIPO_INCIDENTE')['Total_Casos']
+                .sum()
+                .reset_index(name='Casos Totales')
+                .sort_values(by='Casos Totales', ascending=False)
+                .head(10)
+            )
+            
+            # Preparar los datos indexados para que st.bar_chart los lea correctamente de forma limpia
+            top_incidentes_chart = top_incidentes.set_index('TIPO_INCIDENTE')
+            
+            # Renderizar el gráfico nativo y rápido de Streamlit
+            st.bar_chart(top_incidentes_chart, use_container_width=True)
+        else:
+            st.info(f"No se registraron incidentes históricos en {localidad_seleccionada.title()} los {input_dia}s a las {input_hora}:00 hs.")
+            
+        st.divider()
+
+        # =========================================================================
+        # SECCIÓN: TABLA DE DEMANDA GENERAL (AHORA ABAJO)
+        # =========================================================================
         st.markdown("#### Demanda de Incidentes por Hora")
-        st.caption("Frecuencia matematica calculada mediante agregacion estructurada del historico real.")
+        st.caption("Frecuencia matemática calculada mediante agregación estructurada del histórico real.")
         
         df_tabla = df_resultados[['LOCALIDAD', 'Incidentes_Proyectados']].copy()
         df_tabla.columns = ['Localidad', 'Incidentes Esperados (Casos/Hora)']
@@ -239,7 +277,7 @@ else:
             hide_index=True
         )
         
-        st.divider()
+        st.success(f"Modelo probabilistico sincronizado.")
         
         # =========================================================================
         # NUEVA SECCIÓN: TOP 10 INCIDENTES RECURRENTES POR LOCALIDAD SELECTA

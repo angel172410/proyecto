@@ -17,25 +17,12 @@ RUTA_AMBULANCIAS = "ubicaciones_ambulancias.csv"
 RUTA_HOSPITALES = "red hospitalaria.csv"
 RUTA_GEOJSON = "Localidades1.0.geojson"
 
-# Función de saneamiento de texto ultra-flexible para homogeneizar llaves de cruce
-def normalizar_texto(texto):
-    if pd.isna(texto):
-        return ""
-    t = str(texto).upper().strip().replace('"', '').replace("'", "")
-    # Mitigar problemas de encoding (Latin-1, UTF-8 y caracteres corruptos)
-    t = t.replace("Á", "A").replace("É", "E").replace("Í", "I").replace("Ó", "O").replace("Ú", "U")
-    t = t.replace("Ã‘", "NARINO").replace("NÂ‘", "NARINO").replace("NARIÑO", "NARINO")
-    if "NARINO" in t or "ANTONIO" in t:
-        return "ANTONIO NARINO"
-    t = re.sub(r'\s+', ' ', t)
-    return t
-
 # Coordenadas maestras para los centros de control
 coordenadas_localidades = {
     'LOCALIDAD': ['USAQUEN', 'CHAPINERO', 'SANTA FE', 'SAN CRISTOBAL', 'USME', 
                   'TUNJUELITO', 'BOSA', 'KENNEDY', 'FONTIBON', 'ENGATIVA', 
                   'SUBA', 'BARRIOS UNIDOS', 'TEUSAQUILLO', 'LOS MARTIRES', 
-                  'ANTONIO NARINO', 'PUENTE ARANDA', 'LA CANDELARIA', 
+                  'ANTONIO NARIÑO', 'PUENTE ARANDA', 'LA CANDELARIA', 
                   'RAFAEL URIBE URIBE', 'CIUDAD BOLIVAR', 'SUMAPAZ'],
     'Lat': [4.742, 4.656, 4.602, 4.571, 4.498, 4.579, 4.620, 4.630, 4.671, 4.711, 
             4.761, 4.667, 4.642, 4.606, 4.591, 4.613, 4.596, 4.562, 4.531, 4.043],
@@ -44,27 +31,19 @@ coordenadas_localidades = {
 }
 df_coor = pd.DataFrame(coordenadas_localidades)
 
-# Convertidor robusto DMS a Decimal (Soporta comillas curvas y caracteres especiales del CSV)
+# Convertidor auxiliar DMS a Decimal
 def dms_a_decimal(coord_str):
     if pd.isna(coord_str) or not isinstance(coord_str, str):
         return None
     try:
-        # Reemplazar comillas curvas y símbolos extraños por estándar
-        c = coord_str.upper().strip()
-        c = c.replace('′', "'").replace('″', '"').replace('’', "'").replace('”', '"')
-        
-        # Buscar todos los bloques numéricos (pueden ser enteros o decimales)
-        partes = re.findall(r"[-+]?\d*\.\d+|\d+", c)
-        
+        partes = re.findall(r"[-+]?\d*\.\d+|\d+", coord_str)
         if len(partes) >= 3:
             grados = float(partes[0])
             minutos = float(partes[1])
             segundos = float(partes[2])
-            
-            decimal = grados + (minutos / 60.0) + (segundos / 3Load600.0)
-            # Control estricto de cuadrante hemisférico para Sur (S) u Oeste (W / O)
-            if any(h in c for h in ['W', 'O', 'S', 'WEST']):
-                decimal = -abs(decimal)
+            decimal = grados + (minutos / 60.0) + (segundos / 3600.0)
+            if 'W' in coord_str.upper() or 'O' in coord_str.upper() or 'S' in coord_str.upper():
+                decimal = -decimal
             return decimal
     except Exception:
         return None
@@ -90,7 +69,7 @@ def procesar_todo_el_sistema(ruta_hist, ruta_amb, ruta_hosp):
     dias_map = {'Monday': 'Lunes', 'Tuesday': 'Martes', 'Wednesday': 'Miércoles', 'Thursday': 'Jueves', 
                 'Friday': 'Viernes', 'Saturday': 'Sábado', 'Sunday': 'Domingo'}
     df_hist['DIA_PROCESADO'] = fechas.dt.day_name().replace(dias_map)
-    df_hist['LOCALIDAD'] = df_hist['LOCALIDAD'].apply(normalizar_texto)
+    df_hist['LOCALIDAD'] = df_hist['LOCALIDAD'].astype(str).str.upper().str.strip()
     
     conteo_incidentes = df_hist.groupby(['DIA_PROCESADO', 'HORA_PROCESADA', 'LOCALIDAD']).size().reset_index(name='Total_Casos')
     conteo_incidentes['Incidentes_Proyectados'] = (conteo_incidentes['Total_Casos'] / 52).round(1)
@@ -99,19 +78,15 @@ def procesar_todo_el_sistema(ruta_hist, ruta_amb, ruta_hosp):
     df_amb = pd.read_csv(ruta_amb, sep=';', encoding='latin1', low_memory=False)
     total_amb = len(df_amb)
     df_amb.columns = [col.upper().strip().replace('"', '') for col in df_amb.columns]
-    df_amb['LOCALIDAD'] = df_amb['LOCALIDAD'].apply(normalizar_texto)
+    df_amb['LOCALIDAD'] = df_amb['LOCALIDAD'].astype(str).str.upper().str.strip()
     
     col_coor_amb = [c for c in df_amb.columns if 'COORDENADAS' in c][0]
     
-    # Separador avanzado para celdas con latitud y longitud pegadas en la misma columna
     def separar_coor_regex(celda, tipo='lat'):
         if pd.isna(celda):
             return None
         texto = str(celda).strip().replace('"', '')
-        # Separar si viene dividido por espacio, punto y coma o tabulación
-        partes = [p for p in re.split(r'\s+|;', texto) if p]
-        
-        # Formato clásico: "4°34′N 74°05′W" -> partes[0]=Lat, partes[1]=Lon
+        partes = [p for p in re.split(r'\s+', texto) if p]
         if len(partes) >= 2:
             return dms_a_decimal(partes[0]) if tipo == 'lat' else dms_a_decimal(partes[1])
         return dms_a_decimal(texto)
@@ -123,7 +98,7 @@ def procesar_todo_el_sistema(ruta_hist, ruta_amb, ruta_hosp):
     df_hosp = pd.read_csv(ruta_hosp, sep=';', encoding='utf-8', low_memory=False)
     total_hosp = len(df_hosp)
     df_hosp.columns = [col.upper().strip().replace('"', '') for col in df_hosp.columns]
-    df_hosp['LOCALIDAD'] = df_hosp['LOCALIDAD'].apply(normalizar_texto)
+    df_hosp['LOCALIDAD'] = df_hosp['LOCALIDAD'].astype(str).str.upper().str.strip()
     
     col_coordenadas = [c for c in df_hosp.columns if 'COORDENADAS' in c][0]
     
@@ -218,11 +193,10 @@ else:
     with col_mapa:
         st.subheader(f"📌 Georreferenciación de Infraestructura")
         
-        # Ajuste de Zoom dinámico preventivo para evitar recortes periféricos
         if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES":
             row_foco = df_final[df_final['LOCALIDAD'] == localidad_foco].iloc[0]
             centro_mapa = [row_foco['Lat'], row_foco['Lon']]
-            zoom_inicial = 12 if localidad_foco != "ANTONIO NARINO" else 11
+            zoom_inicial = 12
         else:
             centro_mapa = [4.640, -74.100]
             zoom_inicial = 11
@@ -237,7 +211,7 @@ else:
             nombre_geo = ""
             for llave in ['Localidad', 'LOCALIDAD', 'Nombre', 'NOMBRE', 'NOMBRE_LOCALIDAD']:
                 if llave in props and props[llave]:
-                    nombre_geo = normalizar_texto(props[llave])
+                    nombre_geo = str(props[llave]).upper().strip()
                     break
             
             if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES":
@@ -272,13 +246,14 @@ else:
 
         if not df_gravedad.empty and df_gravedad['Incidentes_Proyectados'].sum() > 0:
             sum_inc = df_gravedad['Incidentes_Proyectados'].sum()
+            # Promedio ponderado espacial (Centro de Masa Analítico)
             lat_grav = (df_gravedad['Lat'] * df_gravedad['Incidentes_Proyectados']).sum() / sum_inc
             lon_grav = (df_gravedad['Lon'] * df_gravedad['Incidentes_Proyectados']).sum() / sum_inc
             
             folium.Marker(
                 location=[lat_grav, lon_grav],
                 icon=folium.Icon(color="orange", icon="star", icon_color="white"),
-                popup=f"<b>Centro de Gravedad Óptimo</b><br>Ubicación teórica sugerida según densidad de casos.",
+                popup=f"<b>Centro de Gravedad Óptimo</b><br>Ubicación teórica sugerida según densidad de casos para {input_dia} a las {input_hora}:00.",
                 tooltip="⭐ CENTRO DE GRAVEDAD"
             ).add_to(m)
 

@@ -18,11 +18,25 @@ RUTA_HOSPITALES = "red hospitalaria.csv"
 RUTA_GEOJSON = "Localidades1.0.geojson"
 
 # Coordenadas maestras para los centros de control
+# Función de saneamiento de texto para homogeneizar la 'Ñ' y tildes en los merges
+def normalizar_texto(texto):
+    if pd.isna(texto):
+        return ""
+    t = str(texto).upper().strip()
+    # Reemplazos estructurales para mitigar errores de encoding comunes (Latin-1 vs UTF-8)
+    t = t.replace("Ñ", "N").replace("Ã‘", "N").replace("NÂ‘", "N").replace("NARIÑO", "NARINO")
+    t = t.replace("Á", "A").replace("É", "E").replace("Í", "I").replace("Ó", "O").replace("Ú", "U")
+    # Limpieza de espacios dobles creados por la conversión
+    t = re.sub(r'\s+', ' ', t)
+    return t
+
+# Coordenadas maestras para los centros de control (Normalizadas sin Ñ)
 coordenadas_localidades = {
     'LOCALIDAD': ['USAQUEN', 'CHAPINERO', 'SANTA FE', 'SAN CRISTOBAL', 'USME', 
                   'TUNJUELITO', 'BOSA', 'KENNEDY', 'FONTIBON', 'ENGATIVA', 
                   'SUBA', 'BARRIOS UNIDOS', 'TEUSAQUILLO', 'LOS MARTIRES', 
                   'ANTONIO NARIÑO', 'PUENTE ARANDA', 'LA CANDELARIA', 
+                  'ANTONIO NARINO', 'PUENTE ARANDA', 'LA CANDELARIA', 
                   'RAFAEL URIBE URIBE', 'CIUDAD BOLIVAR', 'SUMAPAZ'],
     'Lat': [4.742, 4.656, 4.602, 4.571, 4.498, 4.579, 4.620, 4.630, 4.671, 4.711, 
             4.761, 4.667, 4.642, 4.606, 4.591, 4.613, 4.596, 4.562, 4.531, 4.043],
@@ -56,32 +70,34 @@ def dms_a_decimal(coord_str):
 def procesar_todo_el_sistema(ruta_hist, ruta_amb, ruta_hosp):
     if not all(os.path.exists(r) for r in [ruta_hist, ruta_amb, ruta_hosp]):
         return None, None, None, 0, 0, 0
-    
+
     # 1.1 Histórico de Incidentes
     df_hist = pd.read_csv(ruta_hist, sep=';', encoding='latin1', low_memory=False)
     total_inc = len(df_hist)
     df_hist.columns = [col.upper().strip().replace('"', '') for col in df_hist.columns]
-    
+
     df_hist['HORA_PROCESADA'] = df_hist['HORA'].astype(str).str.split(':').str[0]
     df_hist['HORA_PROCESADA'] = pd.to_numeric(df_hist['HORA_PROCESADA'], errors='coerce').fillna(0).astype(int)
-    
+
     fechas = pd.to_datetime(df_hist['FECHA_INICIO_DESPLAZAMIENTO_MOVIL'], format='%d/%m/%Y', errors='coerce')
     dias_map = {'Monday': 'Lunes', 'Tuesday': 'Martes', 'Wednesday': 'Miércoles', 'Thursday': 'Jueves', 
                 'Friday': 'Viernes', 'Saturday': 'Sábado', 'Sunday': 'Domingo'}
     df_hist['DIA_PROCESADO'] = fechas.dt.day_name().replace(dias_map)
     df_hist['LOCALIDAD'] = df_hist['LOCALIDAD'].astype(str).str.upper().str.strip()
-    
+    df_hist['LOCALIDAD'] = df_hist['LOCALIDAD'].apply(normalizar_texto)
+
     conteo_incidentes = df_hist.groupby(['DIA_PROCESADO', 'HORA_PROCESADA', 'LOCALIDAD']).size().reset_index(name='Total_Casos')
     conteo_incidentes['Incidentes_Proyectados'] = (conteo_incidentes['Total_Casos'] / 52).round(1)
-    
+
     # 1.2 Ubicaciones de Ambulancias
     df_amb = pd.read_csv(ruta_amb, sep=';', encoding='latin1', low_memory=False)
     total_amb = len(df_amb)
     df_amb.columns = [col.upper().strip().replace('"', '') for col in df_amb.columns]
     df_amb['LOCALIDAD'] = df_amb['LOCALIDAD'].astype(str).str.upper().str.strip()
-    
+    df_amb['LOCALIDAD'] = df_amb['LOCALIDAD'].apply(normalizar_texto)
+
     col_coor_amb = [c for c in df_amb.columns if 'COORDENADAS' in c][0]
-    
+
     def separar_coor_regex(celda, tipo='lat'):
         if pd.isna(celda):
             return None
@@ -93,18 +109,19 @@ def procesar_todo_el_sistema(ruta_hist, ruta_amb, ruta_hosp):
 
     df_amb['LATITUD'] = df_amb[col_coor_amb].apply(lambda x: separar_coor_regex(x, 'lat'))
     df_amb['LONGITUD'] = df_amb[col_coor_amb].apply(lambda x: separar_coor_regex(x, 'lon'))
-    
+
     # 1.3 Red Hospitalaria
     df_hosp = pd.read_csv(ruta_hosp, sep=';', encoding='utf-8', low_memory=False)
     total_hosp = len(df_hosp)
     df_hosp.columns = [col.upper().strip().replace('"', '') for col in df_hosp.columns]
     df_hosp['LOCALIDAD'] = df_hosp['LOCALIDAD'].astype(str).str.upper().str.strip()
-    
+    df_hosp['LOCALIDAD'] = df_hosp['LOCALIDAD'].apply(normalizar_texto)
+
     col_coordenadas = [c for c in df_hosp.columns if 'COORDENADAS' in c][0]
-    
+
     df_hosp['LATITUD'] = df_hosp[col_coordenadas].astype(str).str.replace('"', '').str.split(';').str[0]
     df_hosp['LONGITUD'] = df_hosp[col_coordenadas].astype(str).str.replace('"', '').str.split(';').str[1]
-    
+
     df_hosp['LATITUD'] = pd.to_numeric(df_hosp['LATITUD'], errors='coerce')
     df_hosp['LONGITUD'] = pd.to_numeric(df_hosp['LONGITUD'], errors='coerce')
 
@@ -139,12 +156,12 @@ else:
 
     conteo_amb = df_ambulancias.groupby('LOCALIDAD').size().reset_index(name='Bases_Disponibles')
     conteo_hosp = df_hospitales.groupby('LOCALIDAD').size().reset_index(name='Hospitales_Disponibles')
-    
+
     df_filtrado = df_modelo[(df_modelo['DIA_PROCESADO'] == input_dia) & (df_modelo['HORA_PROCESADA'] == input_hora)]
     df_merge = pd.merge(df_coor, df_filtrado, on='LOCALIDAD', how='left').fillna(0)
     df_merge = pd.merge(df_merge, conteo_amb, on='LOCALIDAD', how='left').fillna(0)
     df_final = pd.merge(df_merge, conteo_hosp, on='LOCALIDAD', how='left').fillna(0)
-    
+
     max_casos_global = df_final['Incidentes_Proyectados'].max()
 
     col_mapa, col_analisis = st.columns([6, 4])
@@ -153,21 +170,21 @@ else:
         st.markdown("#### 🎯 Control de Enfoque Territorial")
         opciones_foco = ["📍 MOSTRAR TODAS LAS LOCALIDADES"] + sorted(df_final['LOCALIDAD'].tolist())
         localidad_foco = st.selectbox("Seleccione un Punto Focal para analizar contraste:", options=opciones_foco)
-        
+
         st.divider()
-        
+
         if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES":
             datos_foco = df_final[df_final['LOCALIDAD'] == localidad_foco].iloc[0]
             st.markdown(f"### 📋 Infraestructura en: {localidad_foco}")
-            
+
             c1, c2, c3 = st.columns(3)
             c1.metric("Casos/h", f"{datos_foco['Incidentes_Proyectados']}")
             c2.metric("Ambulancias", f"{int(datos_foco['Bases_Disponibles'])}")
             c3.metric("Hospitales/IPS", f"{int(datos_foco['Hospitales_Disponibles'])}")
-            
+
             ambs = datos_foco['Bases_Disponibles']
             hosps = datos_foco['Hospitales_Disponibles']
-            
+
             if ambs == 0 and hosps == 0:
                 st.error("🚨 **Zona Desprotegida:** No hay ambulancias ni hospitales registrados en esta localidad.")
             elif ambs == 0 and hosps > 0:
@@ -192,7 +209,7 @@ else:
 
     with col_mapa:
         st.subheader(f"📌 Georreferenciación de Infraestructura")
-        
+
         if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES":
             row_foco = df_final[df_final['LOCALIDAD'] == localidad_foco].iloc[0]
             centro_mapa = [row_foco['Lat'], row_foco['Lon']]
@@ -202,8 +219,8 @@ else:
             zoom_inicial = 11
 
         m = folium.Map(location=centro_mapa, zoom_start=zoom_inicial, tiles="cartodbpositron")
-        
-with open(RUTA_GEOJSON, 'r', encoding='utf-8') as f:
+
+        with open(RUTA_GEOJSON, 'r', encoding='utf-8') as f:
             geojson_data = json.load(f)
 
         def funcion_estilo(feature):
@@ -212,8 +229,9 @@ with open(RUTA_GEOJSON, 'r', encoding='utf-8') as f:
             for llave in ['Localidad', 'LOCALIDAD', 'Nombre', 'NOMBRE', 'NOMBRE_LOCALIDAD']:
                 if llave in props and props[llave]:
                     nombre_geo = str(props[llave]).upper().strip()
+                    nombre_geo = normalizar_texto(props[llave])
                     break
-            
+
             if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES":
                 if localidad_foco in nombre_geo or nombre_geo in localidad_foco:
                     return {'fillColor': '#1d3557', 'color': '#1d3557', 'weight': 3.2, 'fillOpacity': 0.12}
@@ -222,8 +240,6 @@ with open(RUTA_GEOJSON, 'r', encoding='utf-8') as f:
             return {'fillColor': '#f8f9fa', 'color': '#4a4a4a', 'weight': 1.6, 'fillOpacity': 0.04}
 
         folium.GeoJson(geojson_data, name="Límites", style_function=funcion_estilo).add_to(m)
-
-
 
         # --- CAPA 2: BURBUJAS DE INCIDENTES ---
         for idx, row in df_final.iterrows():
@@ -234,13 +250,13 @@ with open(RUTA_GEOJSON, 'r', encoding='utf-8') as f:
                 relacion = row['Bases_Disponibles'] / casos
                 color_nodo = "#e63946" if relacion < 1.0 else ("#ffb703" if relacion <= 2.0 else "#2a9d8f")
                 radio_dinamico = max((casos / (max_casos_global if max_casos_global > 0 else 1)) * 2500, 200)
-                
+
                 folium.Circle(
                     location=[row['Lat'], row['Lon']], radius=radio_dinamico,
                     color=color_nodo, fill=True, fill_color=color_nodo, fill_opacity=0.25, weight=1,
                     tooltip=f"<b>{row['LOCALIDAD']}</b><br>Incidentes: {casos}/h"
                 ).add_to(m)
-            
+
         # --- CAPA INTERMEDIA: CALCULO Y RENDERIZADO DEL CENTRO DE GRAVEDAD ---
         df_gravedad = df_final[df_final['Incidentes_Proyectados'] > 0]
         if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES":
@@ -251,7 +267,7 @@ with open(RUTA_GEOJSON, 'r', encoding='utf-8') as f:
             # Promedio ponderado espacial (Centro de Masa Analítico)
             lat_grav = (df_gravedad['Lat'] * df_gravedad['Incidentes_Proyectados']).sum() / sum_inc
             lon_grav = (df_gravedad['Lon'] * df_gravedad['Incidentes_Proyectados']).sum() / sum_inc
-            
+
             folium.Marker(
                 location=[lat_grav, lon_grav],
                 icon=folium.Icon(color="orange", icon="star", icon_color="white"),
@@ -281,7 +297,7 @@ with open(RUTA_GEOJSON, 'r', encoding='utf-8') as f:
                 nombre_ips = row_hosp[[c for c in df_hospitales.columns if 'NOMBRE' in c][0]]
                 comp = row_hosp[[c for c in df_hospitales.columns if 'COMPLEJIDAD' in c][0]]
                 direc = row_hosp[[c for c in df_hospitales.columns if 'DIRECCIÓN' in c or 'DIRECCION' in c][0]]
-                
+
                 folium.Marker(
                     location=[lat, lon],
                     icon=folium.Icon(color="red", icon="briefcase"), 

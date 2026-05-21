@@ -17,12 +17,24 @@ RUTA_AMBULANCIAS = "ubicaciones_ambulancias.csv"
 RUTA_HOSPITALES = "red hospitalaria.csv"
 RUTA_GEOJSON = "Localidades1.0.geojson"
 
-# Coordenadas maestras para los centros de control
+# Función de saneamiento de texto para homogeneizar la 'Ñ' y tildes en los merges
+def normalizar_texto(texto):
+    if pd.isna(texto):
+        return ""
+    t = str(texto).upper().strip()
+    # Reemplazos estructurales para mitigar errores de encoding comunes (Latin-1 vs UTF-8)
+    t = t.replace("Ñ", "N").replace("Ã‘", "N").replace("NÂ‘", "N").replace("NARIÑO", "NARINO")
+    t = t.replace("Á", "A").replace("É", "E").replace("Í", "I").replace("Ó", "O").replace("Ú", "U")
+    # Limpieza de espacios dobles creados por la conversión
+    t = re.sub(r'\s+', ' ', t)
+    return t
+
+# Coordenadas maestras para los centros de control (Normalizadas sin Ñ)
 coordenadas_localidades = {
     'LOCALIDAD': ['USAQUEN', 'CHAPINERO', 'SANTA FE', 'SAN CRISTOBAL', 'USME', 
                   'TUNJUELITO', 'BOSA', 'KENNEDY', 'FONTIBON', 'ENGATIVA', 
                   'SUBA', 'BARRIOS UNIDOS', 'TEUSAQUILLO', 'LOS MARTIRES', 
-                  'ANTONIO NARIÑO', 'PUENTE ARANDA', 'LA CANDELARIA', 
+                  'ANTONIO NARINO', 'PUENTE ARANDA', 'LA CANDELARIA', 
                   'RAFAEL URIBE URIBE', 'CIUDAD BOLIVAR', 'SUMAPAZ'],
     'Lat': [4.742, 4.656, 4.602, 4.571, 4.498, 4.579, 4.620, 4.630, 4.671, 4.711, 
             4.761, 4.667, 4.642, 4.606, 4.591, 4.613, 4.596, 4.562, 4.531, 4.043],
@@ -69,7 +81,7 @@ def procesar_todo_el_sistema(ruta_hist, ruta_amb, ruta_hosp):
     dias_map = {'Monday': 'Lunes', 'Tuesday': 'Martes', 'Wednesday': 'Miércoles', 'Thursday': 'Jueves', 
                 'Friday': 'Viernes', 'Saturday': 'Sábado', 'Sunday': 'Domingo'}
     df_hist['DIA_PROCESADO'] = fechas.dt.day_name().replace(dias_map)
-    df_hist['LOCALIDAD'] = df_hist['LOCALIDAD'].astype(str).str.upper().str.strip()
+    df_hist['LOCALIDAD'] = df_hist['LOCALIDAD'].apply(normalizar_texto)
     
     conteo_incidentes = df_hist.groupby(['DIA_PROCESADO', 'HORA_PROCESADA', 'LOCALIDAD']).size().reset_index(name='Total_Casos')
     conteo_incidentes['Incidentes_Proyectados'] = (conteo_incidentes['Total_Casos'] / 52).round(1)
@@ -78,7 +90,7 @@ def procesar_todo_el_sistema(ruta_hist, ruta_amb, ruta_hosp):
     df_amb = pd.read_csv(ruta_amb, sep=';', encoding='latin1', low_memory=False)
     total_amb = len(df_amb)
     df_amb.columns = [col.upper().strip().replace('"', '') for col in df_amb.columns]
-    df_amb['LOCALIDAD'] = df_amb['LOCALIDAD'].astype(str).str.upper().str.strip()
+    df_amb['LOCALIDAD'] = df_amb['LOCALIDAD'].apply(normalizar_texto)
     
     col_coor_amb = [c for c in df_amb.columns if 'COORDENADAS' in c][0]
     
@@ -98,7 +110,7 @@ def procesar_todo_el_sistema(ruta_hist, ruta_amb, ruta_hosp):
     df_hosp = pd.read_csv(ruta_hosp, sep=';', encoding='utf-8', low_memory=False)
     total_hosp = len(df_hosp)
     df_hosp.columns = [col.upper().strip().replace('"', '') for col in df_hosp.columns]
-    df_hosp['LOCALIDAD'] = df_hosp['LOCALIDAD'].astype(str).str.upper().str.strip()
+    df_hosp['LOCALIDAD'] = df_hosp['LOCALIDAD'].apply(normalizar_texto)
     
     col_coordenadas = [c for c in df_hosp.columns if 'COORDENADAS' in c][0]
     
@@ -211,7 +223,7 @@ else:
             nombre_geo = ""
             for llave in ['Localidad', 'LOCALIDAD', 'Nombre', 'NOMBRE', 'NOMBRE_LOCALIDAD']:
                 if llave in props and props[llave]:
-                    nombre_geo = str(props[llave]).upper().strip()
+                    nombre_geo = normalizar_texto(props[llave])
                     break
             
             if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES":
@@ -246,7 +258,6 @@ else:
 
         if not df_gravedad.empty and df_gravedad['Incidentes_Proyectados'].sum() > 0:
             sum_inc = df_gravedad['Incidentes_Proyectados'].sum()
-            # Promedio ponderado espacial (Centro de Masa Analítico)
             lat_grav = (df_gravedad['Lat'] * df_gravedad['Incidentes_Proyectados']).sum() / sum_inc
             lon_grav = (df_gravedad['Lon'] * df_gravedad['Incidentes_Proyectados']).sum() / sum_inc
             

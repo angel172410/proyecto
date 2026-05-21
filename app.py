@@ -203,31 +203,23 @@ else:
 
         m = folium.Map(location=centro_mapa, zoom_start=zoom_inicial, tiles="cartodbpositron")
         
-        # --- CAPA 1: DIBUJAR LÍNEAS DEL GEOJSON LOCAL CON PARCHE DE NOMBRES ---
+
+       # --- CAPA 1: DIBUJAR LÍNEAS DEL GEOJSON LOCAL ---
         with open(RUTA_GEOJSON, 'r', encoding='utf-8') as f:
             geojson_data = json.load(f)
 
-        # Lista ordenada de localidades oficiales tal como están ordenadas en los features de tu archivo
-        # NOTA: Asegúrate de que este orden coincida exactamente con el orden físico de los polígonos en tu archivo GeoJSON
-        orden_localidades_geojson = [
-            'USAQUEN', 'CHAPINERO', 'SANTA FE', 'SAN CRISTOBAL', 'USME', 
-            'TUNJUELITO', 'BOSA', 'KENNEDY', 'FONTIBON', 'ENGATIVA', 
-            'SUBA', 'BARRIOS UNIDOS', 'TEUSAQUILLO', 'LOS MARTIRES', 
-            'ANTONIO NARIÑO', 'PUENTE ARANDA', 'LA CANDELARIA', 
-            'RAFAEL URIBE URIBE', 'CIUDAD BOLIVAR', 'SUMAPAZ'
-        ]
-
-        # Inyectamos a la fuerza los nombres en las propiedades vacías para que el motor visual funcione
-        for i, feature in enumerate(geojson_data['features']):
-            if i < len(orden_localidades_geojson):
-                feature['properties']['Localidad'] = orden_localidades_geojson[i]
-
         def funcion_estilo(feature):
             props = feature['properties']
-            nombre_geo = str(props.get('Localidad', '')).upper().strip()
+            nombre_geo = ""
+            for llave in ['Localidad', 'LOCALIDAD', 'Nombre', 'NOMBRE', 'NOMBRE_LOCALIDAD']:
+                if llave in props and props[llave]:
+                    # Limpiamos el texto para asegurar una coincidencia exacta
+                    nombre_geo = str(props[llave]).upper().strip()
+                    break
             
             if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES":
-                if localidad_foco == nombre_geo:
+                # Validamos que nombre_geo NO esté vacío antes de comparar
+                if nombre_geo and (localidad_foco in nombre_geo or nombre_geo in localidad_foco):
                     return {'fillColor': '#1d3557', 'color': '#1d3557', 'weight': 3.2, 'fillOpacity': 0.12}
                 else:
                     return {'fillColor': '#ffffff', 'color': '#e0e0e0', 'weight': 0.6, 'fillOpacity': 0.01}

@@ -17,19 +17,20 @@ RUTA_AMBULANCIAS = "ubicaciones_ambulancias.csv"
 RUTA_HOSPITALES = "red hospitalaria.csv"
 RUTA_GEOJSON = "Localidades1.0.geojson"
 
-# Función de saneamiento de texto para homogeneizar la 'Ñ' y tildes en los merges
+# Función de saneamiento de texto ultra-flexible para homogeneizar llaves de cruce
 def normalizar_texto(texto):
     if pd.isna(texto):
         return ""
-    t = str(texto).upper().strip()
-    # Reemplazos estructurales para mitigar errores de encoding comunes (Latin-1 vs UTF-8)
-    t = t.replace("Ñ", "N").replace("Ã‘", "N").replace("NÂ‘", "N").replace("NARIÑO", "NARINO")
+    t = str(texto).upper().strip().replace('"', '').replace("'", "")
+    # Mitigar problemas de encoding (Latin-1, UTF-8 y caracteres corruptos)
     t = t.replace("Á", "A").replace("É", "E").replace("Í", "I").replace("Ó", "O").replace("Ú", "U")
-    # Limpieza de espacios dobles creados por la conversión
+    t = t.replace("Ã‘", "NARINO").replace("NÂ‘", "NARINO").replace("NARIÑO", "NARINO")
+    if "NARINO" in t or "ANTONIO" in t:
+        return "ANTONIO NARINO"
     t = re.sub(r'\s+', ' ', t)
     return t
 
-# Coordenadas maestras para los centros de control (Normalizadas sin Ñ)
+# Coordenadas maestras para los centros de control
 coordenadas_localidades = {
     'LOCALIDAD': ['USAQUEN', 'CHAPINERO', 'SANTA FE', 'SAN CRISTOBAL', 'USME', 
                   'TUNJUELITO', 'BOSA', 'KENNEDY', 'FONTIBON', 'ENGATIVA', 
@@ -43,19 +44,27 @@ coordenadas_localidades = {
 }
 df_coor = pd.DataFrame(coordenadas_localidades)
 
-# Convertidor auxiliar DMS a Decimal
+# Convertidor robusto DMS a Decimal (Soporta comillas curvas y caracteres especiales del CSV)
 def dms_a_decimal(coord_str):
     if pd.isna(coord_str) or not isinstance(coord_str, str):
         return None
     try:
-        partes = re.findall(r"[-+]?\d*\.\d+|\d+", coord_str)
+        # Reemplazar comillas curvas y símbolos extraños por estándar
+        c = coord_str.upper().strip()
+        c = c.replace('′', "'").replace('″', '"').replace('’', "'").replace('”', '"')
+        
+        # Buscar todos los bloques numéricos (pueden ser enteros o decimales)
+        partes = re.findall(r"[-+]?\d*\.\d+|\d+", c)
+        
         if len(partes) >= 3:
             grados = float(partes[0])
             minutos = float(partes[1])
             segundos = float(partes[2])
-            decimal = grados + (minutos / 60.0) + (segundos / 3600.0)
-            if 'W' in coord_str.upper() or 'O' in coord_str.upper() or 'S' in coord_str.upper():
-                decimal = -decimal
+            
+            decimal = grados + (minutos / 60.0) + (segundos / 3Load600.0)
+            # Control estricto de cuadrante hemisférico para Sur (S) u Oeste (W / O)
+            if any(h in c for h in ['W', 'O', 'S', 'WEST']):
+                decimal = -abs(decimal)
             return decimal
     except Exception:
         return None
@@ -94,11 +103,15 @@ def procesar_todo_el_sistema(ruta_hist, ruta_amb, ruta_hosp):
     
     col_coor_amb = [c for c in df_amb.columns if 'COORDENADAS' in c][0]
     
+    # Separador avanzado para celdas con latitud y longitud pegadas en la misma columna
     def separar_coor_regex(celda, tipo='lat'):
         if pd.isna(celda):
             return None
         texto = str(celda).strip().replace('"', '')
-        partes = [p for p in re.split(r'\s+', texto) if p]
+        # Separar si viene dividido por espacio, punto y coma o tabulación
+        partes = [p for p in re.split(r'\s+|;', texto) if p]
+        
+        # Formato clásico: "4°34′N 74°05′W" -> partes[0]=Lat, partes[1]=Lon
         if len(partes) >= 2:
             return dms_a_decimal(partes[0]) if tipo == 'lat' else dms_a_decimal(partes[1])
         return dms_a_decimal(texto)
@@ -205,10 +218,11 @@ else:
     with col_mapa:
         st.subheader(f"📌 Georreferenciación de Infraestructura")
         
+        # Ajuste de Zoom dinámico preventivo para evitar recortes periféricos
         if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES":
             row_foco = df_final[df_final['LOCALIDAD'] == localidad_foco].iloc[0]
             centro_mapa = [row_foco['Lat'], row_foco['Lon']]
-            zoom_inicial = 12
+            zoom_inicial = 12 if localidad_foco != "ANTONIO NARINO" else 11
         else:
             centro_mapa = [4.640, -74.100]
             zoom_inicial = 11
@@ -264,7 +278,7 @@ else:
             folium.Marker(
                 location=[lat_grav, lon_grav],
                 icon=folium.Icon(color="orange", icon="star", icon_color="white"),
-                popup=f"<b>Centro de Gravedad Óptimo</b><br>Ubicación teórica sugerida según densidad de casos para {input_dia} a las {input_hora}:00.",
+                popup=f"<b>Centro de Gravedad Óptimo</b><br>Ubicación teórica sugerida según densidad de casos.",
                 tooltip="⭐ CENTRO DE GRAVEDAD"
             ).add_to(m)
 

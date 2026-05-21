@@ -203,9 +203,7 @@ else:
 
         m = folium.Map(location=centro_mapa, zoom_start=zoom_inicial, tiles="cartodbpositron")
         
-
-       # --- CAPA 1: DIBUJAR LÍNEAS DEL GEOJSON LOCAL ---
-        with open(RUTA_GEOJSON, 'r', encoding='utf-8') as f:
+with open(RUTA_GEOJSON, 'r', encoding='utf-8') as f:
             geojson_data = json.load(f)
 
         def funcion_estilo(feature):
@@ -213,19 +211,18 @@ else:
             nombre_geo = ""
             for llave in ['Localidad', 'LOCALIDAD', 'Nombre', 'NOMBRE', 'NOMBRE_LOCALIDAD']:
                 if llave in props and props[llave]:
-                    # Limpiamos el texto para asegurar una coincidencia exacta
                     nombre_geo = str(props[llave]).upper().strip()
                     break
             
             if localidad_foco != "📍 MOSTRAR TODAS LAS LOCALIDADES":
-                # Validamos que nombre_geo NO esté vacío antes de comparar
-                if nombre_geo and (localidad_foco in nombre_geo or nombre_geo in localidad_foco):
+                if localidad_foco in nombre_geo or nombre_geo in localidad_foco:
                     return {'fillColor': '#1d3557', 'color': '#1d3557', 'weight': 3.2, 'fillOpacity': 0.12}
                 else:
                     return {'fillColor': '#ffffff', 'color': '#e0e0e0', 'weight': 0.6, 'fillOpacity': 0.01}
             return {'fillColor': '#f8f9fa', 'color': '#4a4a4a', 'weight': 1.6, 'fillOpacity': 0.04}
 
         folium.GeoJson(geojson_data, name="Límites", style_function=funcion_estilo).add_to(m)
+
 
 
         # --- CAPA 2: BURBUJAS DE INCIDENTES ---

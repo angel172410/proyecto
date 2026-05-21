@@ -234,7 +234,7 @@ else:
             return {'fillColor': '#f8f9fa', 'color': '#4a4a4a', 'weight': 1.6, 'fillOpacity': 0.04}
 
         folium.GeoJson(geojson_data, name="Límites", style_function=funcion_estilo).add_to(m)
-Al darle una identidad textual a cada polígono mediante cualquiera de estas dos opciones, el motor de Folium podrá por fin amarrar las coordenadas geográficas de las ambulancias y los centros de gravedad con su respectiva frontera en el mapa.
+
 
         # --- CAPA 2: BURBUJAS DE INCIDENTES ---
         for idx, row in df_final.iterrows():
